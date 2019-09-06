@@ -1,48 +1,102 @@
 {% extends 'base.html.twig' %}
 
 {% block body %}
-    Homepage.
+    <div id="talker-name"></div>
+    <button id="end" style="display: none">Стоп</button>
+    <input type="text" id="name" placeholder="Ваше имя">
+    <button id="new-user">Найти собеседника</button>
+    <button id="next" style="display: none">Найти нового собеседника</button>
+    <form id="qq" style="display: none">
+        <input type="text" id="imba">
+        <input type="submit" id="submit">
+    </form>
+    <div id="messages"></div>
 {% endblock %}
 
 {% block javascripts %}
-    <script src="{{ asset('bundles/goswebsocket/js/vendor/autobahn.min.js') }}"></script>
-    <script src="{{ asset('bundles/goswebsocket/js/websocket.min.js') }}"></script>
-
+    <script
+            src="https://code.jquery.com/jquery-3.4.1.min.js"
+            integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo="
+            crossorigin="anonymous"></script>
     <script type="text/javascript">
-        var websocket = WS.connect("ws://127.0.0.1:1337");
+        $(document).ready(function () {
+            var conn = new WebSocket('ws://192.168.0.112:8080/echo');
+            conn.onmessage = function(e){
 
-        websocket.on("socket/connect", function (session) {
-            session.subscribe("acme/channel", function (uri, payload) {
-                console.log("Received message", payload.msg);
-            });
-
-            session.call("sample/sum", {"term1": 2, "term2": 5}).then(
-                function (result) {
-                    console.log("RPC Valid!", result);
-                },
-                function (error, desc) {
-                    console.log("RPC Error", error, desc);
+                let data = JSON.parse(e.data);
+                console.log(data, data['type']);
+                switch (data['type']) {
+                    case 'info':
+                        $('#messages').append('<div>'+data['msg']+'</div>');
+                        break;
+                    case 'connected':
+                            $('#talker-name').text('Вы разговариваете с '+data['name']);
+                            $('#new-user').hide();
+                            $('#qq').show();
+                            $('#next').show();
+                            $('#messages').html('');
+                        break;
+                    case 'msg':
+                        $('#messages').append('<div>'+data['msg']+'</div>');
+                        break;
+                    case 'wait':
+                        $('#messages').append('<div>Ищем вам собеседника</div>');
+                        break;
+                    case 'closed-talk':
+                        $('#talker-name').text('');
+                        $('#qq').hide();
+                        $('#next').hide();
+                        $('#messages').html('').append('<div>Ищем вам нового собеседника</div>');
+                        break;
                 }
-            );
+            };
+            conn.onopen = function(){
+                conn.send('connected');
+            };
 
-            session.publish("acme/channel", {msg: "This is a message!"});
+            conn.onerror = function(){
+                $('#messages').append('<div>gabella</div>');
 
-            session.publish("acme/channel", {msg: "I'm leaving, I will not see the next message"});
-
-            session.unsubscribe("acme/channel");
-
-            session.publish("acme/channel", {msg: "I won't see this"});
-
-            session.subscribe("acme/channel", function (uri, payload) {
-                console.log("Received message", payload.msg);
+            };
+            $(document).on('submit', '#qq', function (e) {
+                e.preventDefault();
+                let arr = [];
+                arr.push('send-msg');
+                arr.push($('#imba').val());
+                conn.send(JSON.stringify(arr));
+                $('#messages').append('<div style="padding-left: 50%">'+$('#imba').val()+'</div>');
+                $('#imba').val('');
             });
-            session.publish("acme/channel", {msg: "I'm back!"});
+            $(document).on('click', '#new-user', function (e) {
+                name = $('#name').val();
+                if(name !== ''){
+                    $('#name').hide();
+                    $('#end').show();
+                    e.preventDefault();
+                    let arr = [];
+                    arr.push('find-talk');
+                    arr.push(name);
+                    conn.send(JSON.stringify(arr));
+                }
+                else
+                    alert('Введите имя');
+            });
+            $(document).on('click', '#next', function () {
+                let arr = [];
+                arr.push('next-talker');
+                conn.send(JSON.stringify(arr));
+            });
+            $(document).on('click', '#end', function () {
+                $(this).hide();
+                $('#new-user').show();
+                $('#qq').hide();
+                $('#next').hide();
+                $('#messages').html('');
+                let arr = [];
+                arr.push('stop');
+                conn.send(JSON.stringify(arr));
+            });
         });
 
-        websocket.on("socket/disconnect", function (error) {
-            //error provides us with some insight into the disconnection: error.reason and error.code
-
-            console.log("Disconnected for " + error.reason + " with code " + error.code);
-        });
     </script>
 {% endblock %}
